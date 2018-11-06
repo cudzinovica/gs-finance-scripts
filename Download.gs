@@ -24,9 +24,15 @@ function copyYahooData() {
   
   var header = [['Date']];
   var newRow = [date];
-  for(var i = 0; i < numStocks; i++){
-    header[0].push(stockValues[i][0]);
-    newRow.push(getFinanceData_(stockValues[i][0], 1));
+  
+  try {
+    for(var i = 0; i < numStocks; i++){
+      header[0].push(stockValues[i][0]);
+      newRow.push(getFinanceData_(stockValues[i][0], 1));
+    }
+  } catch (e) {
+    logger.log(e);
+    return;
   }
   
   dataSheet.getRange(1,1,1,header[0].length).setValues(header);
@@ -72,6 +78,12 @@ function getFinanceData_(stockSymbol) {
     var results = JSON.parse(resultsAsString);
     
     var timeSeriesDaily = results["Time Series (Daily)"];
+    
+    if ( !timeSeriesDaily ) {
+      logger.log('results:');
+      logger.log(results);
+      throw new Error('no data in results!');
+    }
     
     var key = Object.keys(timeSeriesDaily)[0];
     
