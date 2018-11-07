@@ -31,7 +31,7 @@ function copyYahooData() {
       newRow.push(getFinanceData_(stockValues[i][0], 1));
     }
   } catch (e) {
-    logger.log(e);
+    Logger.log(e);
     return;
   }
   
@@ -80,8 +80,9 @@ function getFinanceData_(stockSymbol) {
     var timeSeriesDaily = results["Time Series (Daily)"];
     
     if ( !timeSeriesDaily ) {
-      logger.log('results:');
-      logger.log(results);
+      Logger.log('failed to find data for: ' + stockSymbol)
+      Logger.log('results:');
+      Logger.log(results);
       throw new Error('no data in results!');
     }
     
