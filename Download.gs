@@ -2,7 +2,7 @@
  * Copies yahoo stock closing price to data sheet
  */
 
-var API_KEY="QJL37TBV56L03I7U";
+var API_KEY="";
  
 function copyYahooData() {
   var spreadsheet = SpreadsheetApp.getActive();
