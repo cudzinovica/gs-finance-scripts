@@ -12,4 +12,4 @@ This repo contains the most up-to-date scripts needed for your google finance sh
 
 4. Press 'ctrl + c' to copy to clipboard, or you can 'right click -> copy'.
 
-5. Copy and paste Alpha Vantage API key on the first line of each script where it says `var API_KEY="PUT_API_KEY_HERE";`
+5. Copy and paste Alpha Vantage API key on the first line of the script where it says `var API_KEY="PUT_API_KEY_HERE";`
