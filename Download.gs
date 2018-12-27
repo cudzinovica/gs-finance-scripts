@@ -1,47 +1,55 @@
-/**
- * Copies yahoo stock closing price to data sheet
- */
+var API_KEY="PUT_API_KEY_HERE";
 
-var API_KEY="";
- 
-function copyYahooData() {
+/**
+ * appends most recent closing prices of stock tickers specified in stock tickers sheet to data sheet
+ */
+function addClosingPrices() {
   var spreadsheet = SpreadsheetApp.getActive();
-  var yahooSheet = spreadsheet.getSheetByName('yahoo links');
-  yahooSheet.activate();
+  var stockTickerSheet = spreadsheet.getSheetByName('stock tickers');
+  stockTickerSheet.activate();
 
   // Get stock data
-  var numStocks = numStocks_(yahooSheet);
-  var stockValues = yahooSheet.getRange(2,1,numStocks).getValues();
+  var numStocks = numStocks_(stockTickerSheet);
+  var stockValues = stockTickerSheet.getRange(2,1,numStocks).getValues();
   
   // Insert stock data as a new row in data sheet
   var dataSheet = spreadsheet.getSheetByName('data');
   dataSheet.activate();
   
   var today = new Date();
-  //today.setDate(today.getDate() - 1);
   var date = today.getFullYear()+'-'+(today.getMonth()+1)+'-'+today.getDate();
-  
   
   var header = [['Date']];
   var newRow = [date];
   
-  try {
-    for(var i = 0; i < numStocks; i++){
-      header[0].push(stockValues[i][0]);
-      newRow.push(getFinanceData_(stockValues[i][0], 1));
+  // for each stock ticker attempts to get closing data up to 5 times
+  for(var i = 0; i < numStocks; i++){
+    header[0].push(stockValues[i][0]);
+    var closingPrice = 0;
+    var tries = 0;
+    var success = false;
+    while(!success){
+      try {
+        closingPrice = getClosingPriceAlphaVantage_(stockValues[i][0], 1);
+        success = true;
+      } catch (e) {
+        Logger.log(e);
+        tries++;
+        Utilities.sleep(5000);
+        if (tries >= 5){
+          success = true;
+        }
+      }
     }
-  } catch (e) {
-    Logger.log(e);
-    return;
+    newRow.push(closingPrice);
   }
   
   dataSheet.getRange(1,1,1,header[0].length).setValues(header);
-  
   dataSheet.appendRow(newRow);
 }
 
 /**
- * returns number of stocks
+ * returns number of stock ticker symbols
  */
 function numStocks_(sheet){
   var range = sheet.getRange(2,1,100);
@@ -59,15 +67,17 @@ function numStocks_(sheet){
 }
 
 /**
- * Returns closing price data for given stock symbol using query1.finance.yahoo.com
+ * Returns closing price data for given stock symbol using alpha vantage api
  * @param stockSymbol: the stock symbol we want closing price of
- * @return: the closing price of supplied stock symbol
+ * @return: the closing price of given stock symbol
  */
-function getFinanceData_(stockSymbol) {
+function getClosingPriceAlphaVantage_(stockSymbol) {
   
   var closingPrice;
   
   var url = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=" + stockSymbol + "&apikey=" + API_KEY;
+  
+  Logger.log(url);
   
   var response = UrlFetchApp.fetch(url);
   
@@ -102,71 +112,44 @@ function getFinanceData_(stockSymbol) {
 }
 
 /**
- * Returns closing price data for given stock symbol using finance.yahoo.com
+ * Returns closing price data for given stock symbol using iex api
  * @param stockSymbol: the stock symbol we want closing price of
- * @return: the closing price of supplied stock symbol
+ * @return: the closing price of given stock symbol
  */
-function getYahooFinanceData_(stockSymbol) {
+function getClosingPriceIex_(stockSymbol) {
   
   var closingPrice;
   
-  var url = "http://finance.yahoo.com/d/quotes.csv?s=" + stockSymbol + "&f=p";
+  var apiUrl = "https://api.iextrading.com/1.0";
   
+  var url = apiUrl + "/stock/" + stockSymbol + "/ohlc";
   
-  var response = UrlFetchApp.fetch(url.replace("^","%5E"), {muteHttpExceptions: true});
+  Logger.log(url);
   
-  if (response.getResponseCode()) {
+  var response = UrlFetchApp.fetch(url);
+  
+  if (response.getResponseCode() == 200) {
     
-    var textFile = response.getContentText();
+    var resultsAsString = response.getContentText();
     
-    // If the URL is incorrect, Yahoo will return a 404 html page and not a CSV
-    if (textFile.indexOf("<html>") == -1) {
-      
-      closingPrice = textFile;
-      
+    var results = JSON.parse(resultsAsString);
+    
+    var close = results["close"];
+    
+    if ( !close ) {
+      Logger.log('failed to find data for: ' + stockSymbol)
+      Logger.log('results:');
+      Logger.log(results);
+      throw new Error('no data in results!');
     }
     
+    var closingPrice = Number(close["price"]).toFixed(2);
+    
+  } else {
+    Logger.log("There was an error downloading today's financial data");
   }
   
   return closingPrice;
   
 }
-
-/**
- * Returns closing price data for given stock symbol using query1.finance.yahoo.com
- * @param stockSymbol: the stock symbol we want closing price of
- * @return: the closing price of supplied stock symbol
- */
-function getYahooFinanceData2_(stockSymbol) {
-  
-  var closingPrice;
-  
-  var today = new Date();
-  var yesterday = Math.floor(today/1000)-100000;
-  
-  var url = "https://query1.finance.yahoo.com/v7/finance/download/" + stockSymbol + "?period1=" + yesterday + 
-      "&period2=" + Math.floor(today/1000) + "&interval=1d&events=history";
-  
-  
-  var response = UrlFetchApp.fetch(url.replace("^","%5E"), {muteHttpExceptions: true, 
-      method: "post", payload: "{username:manyenc,password:3Cudzinovi*}"});
-  
-  if (response.getResponseCode()) {
     
-    var textFile = response.getContentText();
-    
-    // If the URL is incorrect, Yahoo will return a 404 html page and not a CSV
-    if (textFile.indexOf("error") == -1) {
-      
-      var line = textFile.split("\n")[1];
-      closingPrice = Number(line.split(",")[4]).toFixed(2);
-      
-    } else {
-      Browser.msgBox("There was an error downloading today's yahoo data");
-    }
-    
-  }
-  
-  return closingPrice;
-  
-}

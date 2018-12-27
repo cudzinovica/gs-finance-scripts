@@ -1,14 +1,12 @@
+var API_KEY="PUT_API_KEY_HERE";
+
 /**
  * A special function that runs when the spreadsheet is open, used to add a
  * custom menu to the spreadsheet.
  */
- 
-var API_KEY="QJL37TBV56L03I7U";
-
 function onOpen() {
   var spreadsheet = SpreadsheetApp.getActive();
   var menuItems = [
-    {name: 'Add new stock...', functionName: 'addNewStock_'},
     {name: 'Add new historical data sheet...', functionName: 'addNewHistSheet_'}
   ];
   spreadsheet.addMenu('Stocks', menuItems);
@@ -22,10 +20,9 @@ function getInterval_(){
 }
 
 /**
- * Adds new stock to yahoo links, generates historical stock data, 
- * and adds columns to financial sheet
+ * Adds new stock to stock ticker sheet and adds columns to financial sheet
  */
-function addNewStock_(){
+function addNewStock_() {
   var interval = getInterval_();
   
   var spreadsheet = SpreadsheetApp.getActive();
@@ -40,18 +37,24 @@ function addNewStock_(){
   }
   var stockTicker = String(selectedStock);
   
-  //add name to yahoo links
-  var stocksSheet = spreadsheet.getSheetByName('yahoo links');
+  //add name to stock tickers sheet
+  var stocksSheet = spreadsheet.getSheetByName('stock tickers');
   stocksSheet.activate();
   
   stocksSheet.appendRow([stockTicker]);
   
-  //add historical data to data sheet
-  copyYahooData();
-  
-  addHistSheet_(stockTicker, interval);
-  
   //add new columns to financial sheet
+  addFinCols_()
+  
+}
+
+/**
+ * adds columns to financial sheet
+ */
+function addFinCols_() {
+  var spreadsheet = SpreadsheetApp.getActive();
+  var stocksSheet = spreadsheet.getSheetByName('stock tickers');
+  
   var workSheet = spreadsheet.getSheets()[2];
   workSheet.activate();
   
@@ -126,7 +129,7 @@ function addNewStock_(){
   var totalMoneyCell = workSheet.getRange(3,(numStocks+1)*2+3);
   totalMoneyCell.setFormula(totalMoneyCell.getFormula()+"+"+getA1Not_(firstCol,2,2)+"*"+getA1Not_(firstCol,3,3));
   totalMoneyCell.copyTo(workSheet.getRange(4,(numStocks+1)*2+3,100));
-  
+
 }
 
 /**
@@ -177,7 +180,7 @@ function addNewHistSheet_(){
 }
 
 /**
- * Creates a new historical data sheet
+ * Creates a new historical data sheet for given stock ticker
  */
 function addHistSheet_(stockTicker,interval){
   var spreadsheet = SpreadsheetApp.getActive();
@@ -185,14 +188,33 @@ function addHistSheet_(stockTicker,interval){
   spreadsheet.insertSheet(stockTicker + " " + interval,spreadsheet.getSheets().length);
   var tickerSheet = spreadsheet.getSheetByName(stockTicker+" "+interval);
   tickerSheet.activate();
-  var closingPrices = getFinanceDataHist_(stockTicker);
-  var range = tickerSheet.getRange(1,1,closingPrices.length,closingPrices[0].length);
-  range.setValues(closingPrices);
+  
+  // tries to get historical data up to 5 times
+  var closingPrices;
+  var tries = 0;
+  var success = false;
+  while(!success){
+    try {
+      closingPrices = getFinanceDataHist_(stockTicker);
+      success = true;
+    } catch (e) {
+      Logger.log(e);
+      tries++;
+      if (tries >= 5){
+        success = true;
+      }
+    }
+  }
+  if(closingPrices){
+    var range = tickerSheet.getRange(1,1,closingPrices.length,closingPrices[0].length);
+    range.setValues(closingPrices);
+  }
+    
 }
 
 
 /**
- * Returns closing price data for given stock symbol using alphavantage. Returns values no older than 2007-10-01
+ * Returns historical closing price data for given stock symbol using alpha vantageapi . Returns values no older than 2007-10-01
  * @param stockSymbol: the stock symbol we want closing price of
  * @return: the closing price of supplied stock symbol
  */
@@ -201,6 +223,8 @@ function getFinanceDataHist_(stockSymbol) {
   var closingPrices = [];
   
   var url = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=" + stockSymbol + "&outputsize=full&apikey=" + API_KEY;
+  
+  Logger.log(url);
   
   var response = UrlFetchApp.fetch(url);
   
@@ -211,6 +235,13 @@ function getFinanceDataHist_(stockSymbol) {
     var results = JSON.parse(resultsAsString);
     
     var timeSeriesDaily = results["Time Series (Daily)"];
+    
+    if(!timeSeriesDaily){
+      Logger.log('failed to find data for: ' + stockSymbol)
+      Logger.log('results:');
+      Logger.log(results);
+      throw new Error('no data in results!');
+    }
     
     var MAX_ROWS = 2000000
     var counter = MAX_ROWS - 1000;
@@ -241,51 +272,3 @@ function getFinanceDataHist_(stockSymbol) {
   return closingPrices;
   
 }
-
-/**
- * Returns closing price data for given stock symbol using query1.finance.yahoo.com
- * @param stockSymbol: the stock symbol we want closing price of
- * @return: the closing price of supplied stock symbol
- */
-function getYahooFinanceDataHist_(stockSymbol,interval) {
-  
-  var closingPrices = [];
-  
-  var today = new Date();
-  var begin = new Date();
-  begin.setFullYear(2000,0,1);
-  
-  var url = "https://query1.finance.yahoo.com/v7/finance/download/" + stockSymbol + "?period1="
-    + Math.floor(begin/1000) + "&period2=" + Math.floor(today/1000) + "&interval=" + interval + "&events=history";
-  
-  
-  var response = UrlFetchApp.fetch(url.replace("^","%5E"), {muteHttpExceptions: true, 
-      method: "post", payload: "{username:manyenc,password:3Cudzinovi*}"});
-  
-  if (response.getResponseCode()) {
-    var textFile = response.getContentText();
-    
-    
-    // If the URL is incorrect, Yahoo will return a 404 html page and not a CSV
-    if (textFile.indexOf("<html>") == -1) {
-      var data = textFile.split("\n");
-      data.splice(0,1);
-      for(var i = 0; i < data.length; i++){
-        var dataLine = data[i].split(",");
-        var currPrice = Number(dataLine[4]).toFixed(2);
-        if(currPrice == 0)
-          currPrice = null;
-        closingPrices.push([dataLine[0],currPrice]);
-      }
-    }
-  }
-  
-  return closingPrices;
-  
-}
-
-
-
-
-
-
